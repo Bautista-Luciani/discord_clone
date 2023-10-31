@@ -1,0 +1,178 @@
+// Este archivo se crea automaticamente al instalar prisma
+// Luego lo reemplazamos con el schema que nos brinda planetscale
+datasource db {
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Enumeraciones
+enum MemberRole {
+  ADMIN
+  MODERATOR
+  GUEST
+}
+
+enum ChannelType {
+  TEXT
+  AUDIO
+  VIDEO
+}
+
+// Modelos
+// Perfiles
+model Profile {
+  id       String @id @default(uuid())
+  userId   String @unique
+  name     String
+  imageUrl String @db.Text
+  email    String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Lo relacionamos con el resto de los modelos
+  servers Server[]
+  members Member[]
+  channels Channel[]
+}
+
+// Servidores
+model Server {
+  id         String @id @default(uuid())
+  name       String
+  imageUrl   String @db.Text
+  inviteCode String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Lo relacionamos con el resto de los modelos
+  profileId String // creamos un atributo el cual se va a relacionar con el id del perfil
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  members Member[]
+  channels Channel[]
+
+  @@index([profileId]) // agregamos esta linea para evitar el warning
+}
+
+// Miembros
+model Member {
+  id   String     @id @default(uuid())
+  role MemberRole @default(GUEST)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Lo relacionamos con el resto de los modelos
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  serverId String
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  messages Message[]
+
+  // Como hay mas de una relacion del mismo modelo debemos definir el nombre de cada relacion en el primer parametro del @relation
+  conversationInitiated Conversation[] @relation("Member One")
+  conversationRecived Conversation[] @relation("Member Two")
+
+  directMessages DirectMessage[]
+ 
+  @@index([profileId])
+  @@index([serverId])
+}
+
+// Canales
+model Channel {
+  id String @id @default(uuid())
+  name String
+  type ChannelType @default(TEXT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Lo relacionamos con el resto de los modelos
+  profileId String
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  serverId String
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  messages Message[]
+
+  @@index([profileId])
+  @@index([serverId])
+}
+
+// Message
+model Message {
+  id String @id @default(uuid())
+  content String @db.Text
+  fileUrl String? @db.Text
+  deleted Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Lo relacionamos con el resto de los modelos
+  memberId String
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  channelId String
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([channelId])
+}
+
+// Conversation
+model Conversation {
+  id String @id @default(uuid())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Lo relacionamos con el resto de los modelos
+  // Como tenemos mas de una relacion con el mismo modelo, a cada relacion debemos definirle un nombre que va a ser el primer parametro dentro de @relations
+  memberOneId String
+  memberOne Member @relation("Member One", fields: [memberOneId], references: [id], onDelete: Cascade)
+
+  memberTwoId String
+  memberTwo Member @relation("Member Two", fields: [memberTwoId], references: [id], onDelete: Cascade)
+
+  directMessages DirectMessage[]
+
+  // En este caso solo nos tira un warning para agregar el index del memberTwoId
+  // En caso de que el warning tambien sea del memberOneId lo agregamos y listo
+  @@index([memberTwoId])
+
+  // Aca definimos que no puede haber una conversacion con dos miembros que tengan el mismo id
+  @@unique([memberOneId, memberTwoId])
+}
+
+// Direct Messages
+model DirectMessage {
+  id String @id @default(uuid())
+  content String @db.Text
+  fileUrl String? @db.Text
+  deleted Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Lo relacionamos con el resto de los modelos
+  memberId String
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  conversationId String
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([conversationId])
+}
